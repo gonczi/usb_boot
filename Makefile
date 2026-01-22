@@ -1,4 +1,4 @@
-.PHONY: all clean download-alpine initramfs uki disk run
+.PHONY: all clean clean-apk clean-all download-alpine initramfs uki disk run
 
 # Configuration
 ALPINE_VERSION := 3.21
@@ -210,6 +210,14 @@ clean:
 	@echo "Clean complete."
 	@echo "Note: APK cache preserved in $(APK_CACHE_DIR)/"
 
+clean-apk:
+	@echo "Cleaning APK cache..."
+	rm -rf $(APK_CACHE_DIR)
+	@echo "APK cache cleaned."
+
+clean-all: clean clean-apk
+	@echo "All build artifacts and cache cleaned."
+
 help:
 	@echo "Makefile targets:"
 	@echo "  all             - Build everything and create disk image (default)"
@@ -218,5 +226,7 @@ help:
 	@echo "  uki             - Create Unified Kernel Image"
 	@echo "  disk            - Create bootable disk image"
 	@echo "  run             - Run the bootable disk image in QEMU"
-	@echo "  clean           - Remove all build artifacts"
+	@echo "  clean           - Remove build artifacts (preserves APK cache)"
+	@echo "  clean-apk       - Remove APK cache directory"
+	@echo "  clean-all       - Remove all build artifacts and cache"
 	@echo "  help            - Show this help message"
