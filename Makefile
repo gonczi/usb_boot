@@ -37,11 +37,11 @@ $(KERNEL_IMAGE):
 		tar xzf alpine-minirootfs-$(ALPINE_VERSION).0-$(ALPINE_ARCH).tar.gz
 	@echo "Downloading kernel package..."
 	cd $(APK_CACHE_DIR) && \
-		wget -c $(ALPINE_MIRROR)/v$(ALPINE_VERSION)/main/$(ALPINE_ARCH)/linux-lts-6.12.61-r0.apk
-	cp $(APK_CACHE_DIR)/linux-lts-6.12.61-r0.apk $(ALPINE_DIR)/
+		wget -c $(ALPINE_MIRROR)/v$(ALPINE_VERSION)/main/$(ALPINE_ARCH)/linux-lts-6.12.65-r0.apk
+	cp $(APK_CACHE_DIR)/linux-lts-6.12.65-r0.apk $(ALPINE_DIR)/
 	@echo "Extracting kernel..."
 	cd $(ALPINE_DIR) && \
-		tar xzf linux-lts-6.12.61-r0.apk
+		tar xzf linux-lts-6.12.65-r0.apk
 	@echo "Downloading Midnight Commander..."
 	cd $(APK_CACHE_DIR) && \
 		wget -c $(ALPINE_MIRROR)/v$(ALPINE_VERSION)/main/$(ALPINE_ARCH)/mc-4.8.32-r0.apk && \
@@ -96,11 +96,8 @@ $(INITRAMFS_CPIO): $(KERNEL_IMAGE)
 	mkdir -p $(INITRAMFS_DIR)/mnt
 	mkdir -p $(INITRAMFS_DIR)/run
 	
-	# Create device nodes (don't fail if already exist)
-	-sudo mknod -m 622 $(INITRAMFS_DIR)/dev/console c 5 1 2>/dev/null || true
-	-sudo mknod -m 666 $(INITRAMFS_DIR)/dev/null c 1 3 2>/dev/null || true
-	-sudo mknod -m 666 $(INITRAMFS_DIR)/dev/zero c 1 5 2>/dev/null || true
-	-sudo mknod -m 666 $(INITRAMFS_DIR)/dev/tty c 5 0 2>/dev/null || true
+	# Note: Device nodes are not created here; devtmpfs will handle them at boot
+	# The init script mounts devtmpfs which automatically creates device nodes
 	
 	# Copy run.sh script
 	cp run.sh $(INITRAMFS_DIR)/root/run.sh
@@ -208,7 +205,7 @@ run: $(DISK_IMAGE)
 
 clean:
 	@echo "Cleaning build directory..."
-	sudo rm -rf $(BUILD_DIR) $(DISK_IMAGE)
+	rm -rf $(BUILD_DIR) $(DISK_IMAGE)
 	rm -f build.log
 	@echo "Clean complete."
 	@echo "Note: APK cache preserved in $(APK_CACHE_DIR)/"
