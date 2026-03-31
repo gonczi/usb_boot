@@ -1,3 +1,4 @@
 build/
 apk/
 bootable-usb.img
+usb_boot.code-workspace
