@@ -285,7 +285,7 @@ run: $(DISK_IMAGE)
 	@echo "SSH access: ssh root@localhost -p 2222 (password: alpine)"
 	@echo "Tip: To exit QEMU, close the window or press Ctrl+C in terminal"
 	@echo ""
-	qemu-system-x86_64 -enable-kvm -m 512M \
+	qemu-system-x86_64 -enable-kvm -m 2G \
 		-drive file=bootable-usb.img,format=raw \
 		-bios /usr/share/ovmf/OVMF.fd \
 		-vga std \
