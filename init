@@ -3,9 +3,9 @@
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Mount essential filesystems
-mount -t proc none /proc
-mount -t sysfs none /sys
-mount -t devtmpfs none /dev
+/bin/busybox mountpoint -q /proc 2>/dev/null || /bin/busybox mount -t proc none /proc
+/bin/busybox mountpoint -q /sys  2>/dev/null || /bin/busybox mount -t sysfs none /sys
+/bin/busybox mountpoint -q /dev  2>/dev/null || /bin/busybox mount -t devtmpfs none /dev
 
 # Set root password to 'alpine'
 echo "root:alpine" | chpasswd
@@ -121,8 +121,9 @@ modprobe drm 2>/dev/null || echo "drm load failed"
 modprobe drm_kms_helper 2>/dev/null || echo "drm_kms_helper load failed"
 modprobe bochs 2>/dev/null || echo "bochs load failed"
 
-# Clear screen
-clear
+# Scan sysfs and populate /dev (needed when kernel auto-mounted devtmpfs before init)
+echo "Running mdev -s to populate /dev from sysfs..."
+/bin/busybox mdev -s 2>/dev/null || true
 
 echo "======================================"
 echo "  Booting Custom Alpine Linux System "
