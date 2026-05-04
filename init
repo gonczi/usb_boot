@@ -167,7 +167,7 @@ if [ -c /dev/fb0 ]; then
     # Clear the framebuffer (black)
     dd if=/dev/zero of=/dev/fb0 bs=3145728 count=1 2>/dev/null
     
-    # Display actual image using fbi
+    # Display actual image using fbifájlokat másol vagy egyszerű host-ol
     if [ -f /root/kiosk-image.png ]; then
         echo "Displaying kiosk image..."
         /usr/bin/fbi -d /dev/fb0 -a -noverbose --autozoom -1 /root/kiosk-image.png </dev/tty1 >/dev/null 2>&1 &

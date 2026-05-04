@@ -13,6 +13,8 @@ At boot the init script sets up networking (DHCP), starts an SSH server (root/al
 
 ## Prerequisites
 
+### System packages
+
 Install all build dependencies (Debian/Ubuntu):
 
 ```sh
@@ -38,6 +40,16 @@ sudo apt install wget tar gzip cpio parted mtools make \
 
 KVM support (`/dev/kvm`) is recommended for usable VM performance.
 
+### Kiosk image
+
+Place the image to display at the root of the project:
+
+```sh
+cp your-image.png kiosk-image.png
+```
+
+This file must exist before running `make`. Supported formats: PNG, JPEG, BMP (anything `fbi` can display).
+
 ## Usage
 
 ```sh
@@ -59,20 +71,40 @@ sudo dd if=bootable-usb.img of=/dev/sdX bs=4M status=progress && sync
 
 ## Make Targets
 
-| Target             | Description                                  |
-|--------------------|----------------------------------------------|
-| `all` / `disk`     | Build the bootable disk image (default)      |
-| `download-alpine`  | Download Alpine rootfs and packages          |
-| `initramfs`        | Create the initramfs archive                 |
-| `uki`              | Create the Unified Kernel Image              |
-| `run`              | Launch in QEMU                               |
-| `clean`            | Remove build artifacts (keeps APK cache)     |
-| `clean-all`        | Remove everything including cached downloads |
+| Target            | Description                             |
+|-------------------|-----------------------------------------|
+| `all` / `disk`    | Build the bootable disk image (default) |
+| `download-alpine` | Download Alpine rootfs and packages     |
+| `initramfs`       | Create the initramfs archive            |
+| `uki`             | Create the Unified Kernel Image         |
+| `run`             | Launch in QEMU                          |
+| `clean`           | Remove all build artifacts              |
 
 ## Project Structure
 
 - `init` — Boot init script (mounts filesystems, networking, SSH, kiosk display)
-- `run.sh` — User script executed during boot
+- `run.sh` — User script executed at the end of boot (customize for your use case)
+- `kiosk-image.png` — Image displayed on the framebuffer (**required**, not tracked in git)
 - `Makefile` — Full build pipeline
-- `apk/` — Cached APK packages and version metadata
 - `build/` — Build outputs (rootfs, initramfs, kernel, UKI)
+- `build/tools/alpine-make-rootfs` — Downloaded helper script for building the Alpine rootfs
+
+## Customization
+
+### Boot script (`run.sh`)
+
+`run.sh` is copied into `/root/run.sh` inside the initramfs and executed at the end of boot. Edit it to run any commands after the system is up (e.g. start a custom application, mount additional storage).
+
+### Rootfs packages
+
+Edit `ROOTFS_PACKAGES` in the `Makefile` to add or remove Alpine packages from the rootfs.
+
+### Rootfs post-install script (`alpine-make-rootfs --script-chroot`)
+
+The build uses [`alpine-make-rootfs`](https://github.com/alpinelinux/alpine-make-rootfs) to assemble the Alpine rootfs. You can pass a script with `--script-chroot` to run commands **inside a chroot of the freshly built rootfs** during the build — for example to configure services with `rc-update`, write config files, or run `apk` commands:
+
+```sh
+sudo alpine-make-rootfs --script-chroot --packages "openssh" ./build/alpine ./setup.sh
+```
+
+With `--script-chroot` the script runs as if it were running on the target Alpine system. Without it, the script runs on the host with `$ROOTFS` pointing to the rootfs directory.
