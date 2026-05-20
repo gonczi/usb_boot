@@ -1,4 +1,4 @@
-.PHONY: all clean clean-all download-alpine initramfs uki disk run
+.PHONY: all clean clean-all download-alpine initramfs uki disk repack run
 
 # Configuration
 ALPINE_VERSION := 3.21
@@ -64,9 +64,13 @@ $(INITRAMFS_CPIO): $(KERNEL_IMAGE)
 	
 	# Copy Alpine rootfs
 	@echo "Copying Alpine rootfs..."
-	cd $(ALPINE_DIR) && tar cf - --exclude='*.apk' --exclude='alpine-minirootfs-*.tar.gz' \
+	@SUDO=""; \
+	if [ "$$(id -u)" -ne 0 ]; then SUDO="sudo"; fi; \
+	cd $(ALPINE_DIR) && \
+		$$SUDO tar cf - --exclude='*.apk' --exclude='alpine-minirootfs-*.tar.gz' \
 		--exclude='lib/firmware' --exclude='lib/firmware/*' \
-		bin sbin lib lib64 usr etc 2>/dev/null | tar xf - -C ../../$(INITRAMFS_DIR)/ || true
+		bin sbin lib lib64 usr etc 2>/dev/null | tar xf - -C ../../$(INITRAMFS_DIR)/
+	@test -f $(INITRAMFS_DIR)/etc/shadow || (echo "ERROR: $(INITRAMFS_DIR)/etc/shadow is missing (root auth will fail). Rebuild with proper sudo access." && exit 1)
 	
 	# Create directory structure
 	mkdir -p $(INITRAMFS_DIR)/dev
@@ -156,6 +160,11 @@ $(DISK_IMAGE): $(UKI_IMAGE)
 	@echo "  qemu-system-x86_64 -enable-kvm -m 2G -drive file=$(DISK_IMAGE),format=raw -bios /usr/share/ovmf/OVMF.fd"
 
 disk: $(DISK_IMAGE)
+
+repack:
+	@echo "Repacking from cached Alpine rootfs..."
+	rm -f $(INITRAMFS_CPIO) $(UKI_IMAGE) $(DISK_IMAGE)
+	$(MAKE) disk
 
 # Run in QEMU
 run: $(DISK_IMAGE)

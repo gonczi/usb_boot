@@ -6,9 +6,20 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 /bin/busybox mountpoint -q /proc 2>/dev/null || /bin/busybox mount -t proc none /proc
 /bin/busybox mountpoint -q /sys  2>/dev/null || /bin/busybox mount -t sysfs none /sys
 /bin/busybox mountpoint -q /dev  2>/dev/null || /bin/busybox mount -t devtmpfs none /dev
+[ -d /dev/pts ] || mkdir -p /dev/pts
+/bin/busybox mountpoint -q /dev/pts 2>/dev/null || /bin/busybox mount -t devpts devpts /dev/pts
 
 # Set root password to 'alpine'
-echo "root:alpine" | chpasswd
+if command -v chpasswd >/dev/null 2>&1; then
+    if echo "root:alpine" | chpasswd; then
+        echo "Root password configured."
+    else
+        echo "WARNING: Failed to set root password via chpasswd"
+        [ -f /etc/shadow ] || echo "WARNING: /etc/shadow missing"
+    fi
+else
+    echo "WARNING: chpasswd not found"
+fi
 
 # Load network driver early so DHCP can succeed
 echo "Loading network driver..."
@@ -72,8 +83,16 @@ fi
 # Start SSH server
 mkdir -p /var/empty /var/run /run
 mkdir -p /etc/ssh
+mkdir -p /etc/ssh/sshd_config.d
 mkdir -p /root/.ssh
 chmod 700 /root/.ssh
+
+# Allow password SSH login for root in this kiosk image.
+cat > /etc/ssh/sshd_config.d/10-root-password.conf <<'EOF'
+PermitRootLogin yes
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+EOF
 
 # Generate host keys if they don't exist
 if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
