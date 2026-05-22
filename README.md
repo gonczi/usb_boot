@@ -83,17 +83,12 @@ sudo dd if=bootable-usb.img of=/dev/sdX bs=4M status=progress && sync
 ## Project Structure
 
 - `init` — Boot init script (mounts filesystems, networking, SSH, kiosk display)
-- `run.sh` — User script executed at the end of boot (customize for your use case)
 - `kiosk-image.png` — Image displayed on the framebuffer (**required**, not tracked in git)
 - `Makefile` — Full build pipeline
 - `build/` — Build outputs (rootfs, initramfs, kernel, UKI)
 - `build/tools/alpine-make-rootfs` — Downloaded helper script for building the Alpine rootfs
 
 ## Customization
-
-### Boot script (`run.sh`)
-
-`run.sh` is copied into `/root/run.sh` inside the initramfs and executed at the end of boot. Edit it to run any commands after the system is up (e.g. start a custom application, mount additional storage).
 
 ### Rootfs packages
 

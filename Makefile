@@ -28,7 +28,7 @@ ALPINE_MAKE_ROOTFS := $(TOOLS_DIR)/alpine-make-rootfs
 # Packages installed into the rootfs; dependencies are resolved automatically by apk.
 ROOTFS_PACKAGES := linux-lts openssh openssh-server-common openssh-sftp-server
 
-all: diskTauri-képes stack Alpine-on, minimal Wayland/WebKitGTK irány:
+all: disk
 
 
 
@@ -89,10 +89,6 @@ $(INITRAMFS_CPIO): $(KERNEL_IMAGE)
 	# Copy kiosk image
 	@echo "Copying kiosk image..."
 	cp kiosk-image.png $(INITRAMFS_DIR)/root/kiosk-image.png
-	
-	# Copy run.sh script
-	cp run.sh $(INITRAMFS_DIR)/root/run.sh 2>/dev/null || true
-	chmod +x $(INITRAMFS_DIR)/root/run.sh 2>/dev/null || true
 	
 	# Copy init script
 	@echo "Copying init script..."
@@ -194,7 +190,7 @@ help:
 	@echo "Makefile targets:"
 	@echo "  all             - Build everything and create bootable disk image (default)"
 	@echo "  download-alpine - Download Alpine Linux rootfs and kernel"
-	@echo "  initramfs       - Create initramfs with run.sh"
+	@echo "  initramfs       - Create initramfs"
 	@echo "  uki             - Create Unified Kernel Image"
 	@echo "  disk            - Create bootable disk image"
 	@echo "  repack          - Rebuild disk image from cached Alpine rootfs"
