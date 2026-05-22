@@ -26,9 +26,11 @@ ALPINE_MAKE_ROOTFS_VERSION := v0.8.1
 ALPINE_MAKE_ROOTFS := $(TOOLS_DIR)/alpine-make-rootfs
 
 # Packages installed into the rootfs; dependencies are resolved automatically by apk.
-ROOTFS_PACKAGES := linux-lts fbida-fbi font-dejavu openssh openssh-server-common openssh-sftp-server
+ROOTFS_PACKAGES := linux-lts openssh openssh-server-common openssh-sftp-server
 
-all: disk
+all: diskTauri-képes stack Alpine-on, minimal Wayland/WebKitGTK irány:
+
+
 
 # Download Alpine Linux rootfs and kernel
 $(KERNEL_IMAGE): 
@@ -112,7 +114,7 @@ $(UKI_IMAGE): $(KERNEL_IMAGE) $(INITRAMFS_CPIO)
 	$(UKIFY) build \
 		--linux=$(KERNEL_IMAGE) \
 		--initrd=$(INITRAMFS_CPIO) \
-		--cmdline="console=tty0 console=ttyS0 earlyprintk=serial,ttyS0,115200 loglevel=7 debug fbcon=nodefer vt.global_cursor_default=0" \
+		--cmdline="console=tty0 console=ttyS0 earlyprintk=serial,ttyS0,115200 loglevel=7 debug" \
 		--output=$(UKI_IMAGE)
 	@echo "UKI created: $(UKI_IMAGE)"
 
@@ -169,7 +171,7 @@ repack:
 # Run in QEMU
 run: $(DISK_IMAGE)
 	@echo "Starting QEMU..."
-	@echo "Window will show framebuffer graphics, terminal shows kernel logs"
+	@echo "Window will show system console, terminal shows kernel logs"
 	@echo "SSH access: ssh root@localhost -p 2222 (password: alpine)"
 	@echo "Tip: To exit QEMU, close the window or press Ctrl+C in terminal"
 	@echo ""
