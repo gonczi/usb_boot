@@ -188,17 +188,14 @@ clean:
 	rm -f build.log
 	@echo "Clean complete."
 
-clean-all: clean
-	@echo "All build artifacts cleaned."
-
 help:
 	@echo "Makefile targets:"
-	@echo "  all             - Build everything and create disk image (default)"
+	@echo "  all             - Build everything and create bootable disk image (default)"
 	@echo "  download-alpine - Download Alpine Linux rootfs and kernel"
 	@echo "  initramfs       - Create initramfs with run.sh"
 	@echo "  uki             - Create Unified Kernel Image"
 	@echo "  disk            - Create bootable disk image"
+	@echo "  repack          - Rebuild disk image from cached Alpine rootfs"
 	@echo "  run             - Run in QEMU (window + console logs)"
 	@echo "  clean           - Remove build artifacts"
-	@echo "  clean-all       - Remove all build artifacts"
 	@echo "  help            - Show this help message"
