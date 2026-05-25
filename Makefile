@@ -26,7 +26,16 @@ ALPINE_MAKE_ROOTFS_VERSION := v0.8.1
 ALPINE_MAKE_ROOTFS := $(TOOLS_DIR)/alpine-make-rootfs
 
 # Packages installed into the rootfs; dependencies are resolved automatically by apk.
-ROOTFS_PACKAGES := linux-lts openssh openssh-server-common openssh-sftp-server
+# Kept intentionally minimal, but includes a Tauri-capable Wayland/WebKitGTK runtime.
+ROOTFS_PACKAGES := \
+	linux-lts \
+	openssh openssh-server-common openssh-sftp-server \
+	dbus \
+	gtk+3.0 webkit2gtk-4.1 \
+	wayland libxkbcommon \
+	mesa-egl mesa-gl mesa-dri-gallium libdrm \
+	seatd cage \
+	ttf-dejavu
 
 all: disk
 
@@ -42,7 +51,9 @@ $(KERNEL_IMAGE):
 	fi
 
 	@echo "Building Alpine rootfs with apk dependency resolution..."
-	rm -rf $(ALPINE_DIR)
+	@SUDO=""; \
+	if [ "$$(id -u)" -ne 0 ]; then SUDO="sudo"; fi; \
+	$$SUDO rm -rf $(ALPINE_DIR)
 	@SUDO=""; \
 	if [ "$$(id -u)" -ne 0 ]; then SUDO="sudo"; fi; \
 	APK_OPTS="--no-progress --arch $(ALPINE_ARCH)" \

@@ -23,6 +23,14 @@ fi
 
 # Load network driver early so DHCP can succeed
 modprobe e1000 2>/dev/null || echo "e1000 load failed"
+
+# Load only minimal generic graphics modules for Wayland/WebKitGTK runtime.
+# Avoid loading all vendor drivers at once (i915/amdgpu/nouveau), which can bloat
+# initramfs boot and create noisy/conflicting probe attempts in VMs.
+for module in drm drm_kms_helper simpledrm virtio_gpu; do
+    modprobe "$module" 2>/dev/null || true
+done
+
 sleep 2
 
 # Setup network
