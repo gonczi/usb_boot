@@ -1,4 +1,4 @@
-.PHONY: all clean clean-all download-alpine initramfs uki disk repack run
+.PHONY: all clean clean-all download-alpine initramfs uki disk repack run tauri-build
 
 # Configuration
 ALPINE_VERSION := 3.21
@@ -10,6 +10,8 @@ BUILD_DIR := build
 TOOLS_DIR := $(BUILD_DIR)/tools
 ALPINE_DIR := $(BUILD_DIR)/alpine
 INITRAMFS_DIR := $(BUILD_DIR)/initramfs
+TAURI_APP_DIR := tauri-welcome
+TAURI_BIN := $(TAURI_APP_DIR)/src-tauri/target/release/tauri_welcome
 
 # Output files
 KERNEL_IMAGE := $(BUILD_DIR)/vmlinuz-lts
@@ -69,8 +71,16 @@ $(KERNEL_IMAGE):
 
 download-alpine: $(KERNEL_IMAGE)
 
+# Build Tauri app binary for embedding into initramfs
+tauri-build: $(TAURI_BIN)
+
+$(TAURI_BIN):
+	@echo "Building Tauri app (release binary)..."
+	cd $(TAURI_APP_DIR) && npm run build
+	cd $(TAURI_APP_DIR)/src-tauri && cargo build --release
+
 # Create initramfs
-$(INITRAMFS_CPIO): $(KERNEL_IMAGE)
+$(INITRAMFS_CPIO): $(KERNEL_IMAGE) tauri-build
 	@echo "Creating initramfs from Alpine Linux..."
 	rm -rf $(INITRAMFS_DIR)
 	mkdir -p $(INITRAMFS_DIR)
@@ -105,6 +115,12 @@ $(INITRAMFS_CPIO): $(KERNEL_IMAGE)
 	@echo "Copying init script..."
 	cp init $(INITRAMFS_DIR)/init
 	chmod +x $(INITRAMFS_DIR)/init
+
+	# Copy Tauri app binary
+	@echo "Copying Tauri app binary..."
+	mkdir -p $(INITRAMFS_DIR)/opt/kiosk
+	cp $(TAURI_BIN) $(INITRAMFS_DIR)/opt/kiosk/tauri_welcome
+	chmod +x $(INITRAMFS_DIR)/opt/kiosk/tauri_welcome
 	
 	# Create initramfs archive
 	@echo "Creating initramfs archive..."
@@ -195,6 +211,9 @@ clean:
 	@echo "Cleaning build directory..."
 	rm -rf $(BUILD_DIR) $(DISK_IMAGE)
 	rm -f build.log
+	@echo "Cleaning Tauri build artifacts..."
+	rm -rf $(TAURI_APP_DIR)/dist
+	rm -rf $(TAURI_APP_DIR)/src-tauri/target
 	@echo "Clean complete."
 
 help:

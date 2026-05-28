@@ -1,0 +1,17 @@
+{
+  "name": "tauri-welcome",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Minimal Tauri welcome app",
+  "scripts": {
+    "dev": "python3 -m http.server 1430 --directory src",
+    "build": "rm -rf dist && mkdir -p dist && cp -r src/* dist/",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.2"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.0"
+  }
+}

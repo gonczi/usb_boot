@@ -2,3 +2,11 @@ build/
 apk/
 bootable-usb.img
 usb_boot.code-workspace
+
+# Tauri welcome app generated artifacts
+tauri-welcome/node_modules/
+tauri-welcome/dist/
+tauri-welcome/src-tauri/target/
+tauri-welcome/core
+tauri-welcome/core.*
+tauri-welcome/npm-debug.log*
