@@ -125,4 +125,19 @@ fi
 /bin/busybox mdev -s 2>/dev/null || true
 
 echo "kiosk-tauri elindult"
+
+# Start kiosk app on TTY1 via cage Wayland compositor
+export XDG_RUNTIME_DIR=/run/user/0
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+
+# seatd is needed for cage to access DRM without root privilege dance
+seatd -g root &
+sleep 1
+
+# Launch cage with the Tauri kiosk app on TTY1
+# WLR_RENDERER_ALLOW_SOFTWARE: needed in VMs without hardware GPU
+# WLR_LIBINPUT_NO_DEVICES: suppress error when no physical input devices present
+openvt -c 1 -s -w -- env WLR_RENDERER_ALLOW_SOFTWARE=1 WLR_LIBINPUT_NO_DEVICES=1 cage /opt/kiosk/tauri_welcome &
+
 exec sleep infinity

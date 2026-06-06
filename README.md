@@ -71,14 +71,50 @@ sudo dd if=bootable-usb.img of=/dev/sdX bs=4M status=progress && sync
 
 ## Make Targets
 
-| Target            | Description                             |
-|-------------------|-----------------------------------------|
-| `all` / `disk`    | Build the bootable disk image (default) |
-| `download-alpine` | Download Alpine rootfs and packages     |
-| `initramfs`       | Create the initramfs archive            |
-| `uki`             | Create the Unified Kernel Image         |
-| `run`             | Launch in QEMU                          |
-| `clean`           | Remove all build artifacts              |
+| Target              | Description                             |
+|---------------------|-----------------------------------------|
+| `all` / `disk`      | Build the bootable disk image (default) |
+| `download-alpine`   | Download Alpine rootfs and packages     |
+| `tauri-build-env`   | Set up the Tauri build chroot (once)    |
+| `tauri-build`       | Compile the Tauri app binary            |
+| `initramfs`         | Create the initramfs archive            |
+| `uki`               | Create the Unified Kernel Image         |
+| `run`               | Launch in QEMU                          |
+| `clean`             | Remove all build artifacts              |
+
+## Tauri App Build
+
+The kiosk UI is a [Tauri](https://tauri.app/) application compiled natively inside an Alpine Linux chroot so that the resulting binary links against musl libc (matching the initramfs runtime).
+
+The build is split into two stages to avoid repeating the slow environment setup on every code change:
+
+### Stage 1 — environment setup (run once)
+
+Clones `build/alpine` into `build/alpine-build`, installs build dependencies via `apk`, and bootstraps a Rust toolchain via `rustup`. Creates a stamp file `build/alpine-build/.deps-ready` so this step is skipped on subsequent builds.
+
+```sh
+sudo make tauri-build-env
+```
+
+Re-run this if `TAURI_BUILD_DEPS` changes or you want to rebuild the chroot from scratch.
+
+### Stage 2 — compile (run on every code change)
+
+Copies source files into the existing chroot, runs `npm run build` (frontend), then `cargo build --release` using the rustup-managed toolchain. Verifies the output binary is musl-linked.
+
+```sh
+sudo make tauri-build
+```
+
+### Common workflows
+
+| Situation | Command |
+|-----------|---------|
+| First-time build | `sudo make tauri-build-env && sudo make tauri-build` |
+| Rust/JS source changed | `sudo make tauri-build` |
+| Build deps changed | `sudo make tauri-build-env && sudo make tauri-build` |
+| Force full rebuild | `sudo make -B tauri-build-env tauri-build` |
+| Full image build | `sudo make disk` *(calls tauri-build automatically)* |
 
 ## Project Structure
 

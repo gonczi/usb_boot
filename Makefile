@@ -1,4 +1,4 @@
-.PHONY: all clean clean-all download-alpine initramfs uki disk repack run tauri-build
+.PHONY: all clean clean-all download-alpine initramfs uki disk repack run tauri-build tauri-build-env
 
 # Configuration
 ALPINE_VERSION := 3.21
@@ -9,6 +9,7 @@ ALPINE_MIRROR := https://dl-cdn.alpinelinux.org/alpine
 BUILD_DIR := build
 TOOLS_DIR := $(BUILD_DIR)/tools
 ALPINE_DIR := $(BUILD_DIR)/alpine
+TAURI_BUILD_ROOT := $(BUILD_DIR)/alpine-build
 INITRAMFS_DIR := $(BUILD_DIR)/initramfs
 TAURI_APP_DIR := tauri-welcome
 TAURI_BIN := $(TAURI_APP_DIR)/src-tauri/target/release/tauri_welcome
@@ -26,6 +27,14 @@ DISK_PADDING_MB := 128
 UKIFY := ukify
 ALPINE_MAKE_ROOTFS_VERSION := v0.8.1
 ALPINE_MAKE_ROOTFS := $(TOOLS_DIR)/alpine-make-rootfs
+TAURI_BUILD_DEPS_STAMP := $(TAURI_BUILD_ROOT)/.deps-ready
+TAURI_BUILD_DEPS := \
+	build-base \
+	rustup \
+	nodejs npm \
+	pkgconf \
+	gtk+3.0-dev webkit2gtk-4.1-dev \
+	glib-dev libsoup3-dev
 
 # Packages installed into the rootfs; dependencies are resolved automatically by apk.
 # Kept intentionally minimal, but includes a Tauri-capable Wayland/WebKitGTK runtime.
@@ -73,11 +82,113 @@ download-alpine: $(KERNEL_IMAGE)
 
 # Build Tauri app binary for embedding into initramfs
 tauri-build: $(TAURI_BIN)
+tauri-build-env: $(TAURI_BUILD_DEPS_STAMP)
+NPM := $(shell which npm 2>/dev/null || find /usr/local/bin /usr/bin /home -name npm -type f 2>/dev/null | head -1)
+CARGO := $(shell which cargo 2>/dev/null || echo $(HOME)/.cargo/bin/cargo)
 
-$(TAURI_BIN):
-	@echo "Building Tauri app (release binary)..."
-	cd $(TAURI_APP_DIR) && npm run build
-	cd $(TAURI_APP_DIR)/src-tauri && cargo build --release
+# --- Stage 1: chroot environment setup ---
+# Clones Alpine, installs build deps, bootstraps rustup.
+# Only re-runs if build/alpine changes or the stamp is missing.
+$(TAURI_BUILD_DEPS_STAMP): $(KERNEL_IMAGE)
+	@set -e; \
+	SUDO=""; \
+	if [ "$$(id -u)" -ne 0 ]; then SUDO="sudo"; fi; \
+	if [ ! -d "$(ALPINE_DIR)" ]; then \
+		echo "ERROR: $(ALPINE_DIR) is missing. Run 'make download-alpine' first."; \
+		exit 1; \
+	fi; \
+	$$SUDO rm -rf "$(abspath $(TAURI_BUILD_ROOT))"; \
+	$$SUDO mkdir -p "$(abspath $(TAURI_BUILD_ROOT))"; \
+	$$SUDO cp -a "$(abspath $(ALPINE_DIR))/." "$(abspath $(TAURI_BUILD_ROOT))/"; \
+	$$SUDO mkdir -p "$(abspath $(TAURI_BUILD_ROOT))/etc"; \
+	if [ -f /etc/resolv.conf ]; then \
+		$$SUDO cp -L /etc/resolv.conf "$(abspath $(TAURI_BUILD_ROOT))/etc/resolv.conf"; \
+	fi; \
+	MOUNTED_PROC=0; MOUNTED_DEV=0; \
+	cleanup() { \
+		[ "$$MOUNTED_DEV"  = "1" ] && $$SUDO umount "$(abspath $(TAURI_BUILD_ROOT))/dev"  || true; \
+		[ "$$MOUNTED_PROC" = "1" ] && $$SUDO umount "$(abspath $(TAURI_BUILD_ROOT))/proc" || true; \
+	}; \
+	trap cleanup EXIT; \
+	$$SUDO mkdir -p "$(abspath $(TAURI_BUILD_ROOT))/dev"; \
+	if ! $$SUDO mountpoint -q "$(abspath $(TAURI_BUILD_ROOT))/dev"; then \
+		$$SUDO mount --bind /dev "$(abspath $(TAURI_BUILD_ROOT))/dev"; MOUNTED_DEV=1; \
+	fi; \
+	$$SUDO mkdir -p "$(abspath $(TAURI_BUILD_ROOT))/proc"; \
+	if ! $$SUDO mountpoint -q "$(abspath $(TAURI_BUILD_ROOT))/proc"; then \
+		$$SUDO mount -t proc proc "$(abspath $(TAURI_BUILD_ROOT))/proc"; MOUNTED_PROC=1; \
+	fi; \
+	$$SUDO chroot "$(abspath $(TAURI_BUILD_ROOT))" /bin/sh -lc 'set -e; \
+		echo "Setting up Tauri build environment..."; \
+		for attempt in 1 2 3; do \
+			apk update && apk add --no-cache $(TAURI_BUILD_DEPS) && break; \
+			echo "apk add failed (attempt $$attempt/3), retrying..."; sleep 2; \
+			[ $$attempt -eq 3 ] && exit 1; \
+		done; \
+		export HOME=/root RUSTUP_HOME=/root/.rustup CARGO_HOME=/root/.cargo; \
+		export PATH=/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; \
+		test -x /usr/bin/rustup-init; \
+		if [ ! -x /root/.cargo/bin/rustc ]; then \
+			echo "Bootstrapping Rust toolchain via rustup..."; \
+			/usr/bin/rustup-init -y --profile minimal --default-toolchain stable; \
+		fi; \
+		/root/.cargo/bin/rustc -vV; \
+		echo "Tauri build environment ready."' || exit $$?; \
+	$$SUDO touch "$(abspath $(TAURI_BUILD_ROOT))/.deps-ready"
+
+# --- Stage 2: build ---
+# Reuses the existing chroot; only re-runs when source files change.
+$(TAURI_BIN): $(TAURI_BUILD_DEPS_STAMP)
+	@echo "Building Tauri app in Alpine chroot (musl)..."
+	@set -e; \
+	SUDO=""; \
+	if [ "$$(id -u)" -ne 0 ]; then SUDO="sudo"; fi; \
+	MOUNTED_PROC=0; MOUNTED_DEV=0; \
+	cleanup() { \
+		[ "$$MOUNTED_DEV"  = "1" ] && $$SUDO umount "$(abspath $(TAURI_BUILD_ROOT))/dev"  || true; \
+		[ "$$MOUNTED_PROC" = "1" ] && $$SUDO umount "$(abspath $(TAURI_BUILD_ROOT))/proc" || true; \
+	}; \
+	trap cleanup EXIT; \
+	$$SUDO mkdir -p "$(abspath $(TAURI_BUILD_ROOT))/dev"; \
+	if ! $$SUDO mountpoint -q "$(abspath $(TAURI_BUILD_ROOT))/dev"; then \
+		$$SUDO mount --bind /dev "$(abspath $(TAURI_BUILD_ROOT))/dev"; MOUNTED_DEV=1; \
+	fi; \
+	$$SUDO mkdir -p "$(abspath $(TAURI_BUILD_ROOT))/proc"; \
+	if ! $$SUDO mountpoint -q "$(abspath $(TAURI_BUILD_ROOT))/proc"; then \
+		$$SUDO mount -t proc proc "$(abspath $(TAURI_BUILD_ROOT))/proc"; MOUNTED_PROC=1; \
+	fi; \
+	$$SUDO mkdir -p "$(abspath $(TAURI_BUILD_ROOT))/work/tauri-welcome"; \
+	cd $(TAURI_APP_DIR) && tar cf - \
+		--exclude='node_modules' \
+		--exclude='dist' \
+		--exclude='src-tauri/target' \
+		. | $$SUDO tar xf - -C "$(abspath $(TAURI_BUILD_ROOT))/work/tauri-welcome"; \
+	$$SUDO chroot "$(abspath $(TAURI_BUILD_ROOT))" /bin/sh -lc 'set -e; \
+		unset RUSTC RUSTC_WRAPPER RUSTFLAGS CARGO_HOME RUSTUP_HOME; \
+		unset CARGO_BUILD_RUSTC CARGO_BUILD_RUSTC_WRAPPER CARGO_ENCODED_RUSTFLAGS CARGO_TARGET_DIR; \
+		cd /work/tauri-welcome; \
+		npm run build; \
+		cd src-tauri; \
+		env -i \
+			HOME=/root \
+			USER=root \
+			LOGNAME=root \
+			SHELL=/bin/sh \
+			RUSTUP_HOME=/root/.rustup \
+			CARGO_HOME=/root/.cargo \
+			PATH=/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+			RUSTFLAGS=-C\ target-feature=-crt-static \
+			RUSTC=/root/.cargo/bin/rustc \
+			/root/.cargo/bin/cargo build --release' || exit $$?; \
+	$$SUDO chroot "$(abspath $(TAURI_BUILD_ROOT))" /bin/sh -lc 'set -e; \
+		INTERP=$$(readelf -l /work/tauri-welcome/src-tauri/target/release/tauri_welcome 2>/dev/null | sed -n "s/.*Requesting program interpreter: \(.*\)]/\1/p"); \
+		if [ "$$INTERP" != "/lib/ld-musl-x86_64.so.1" ]; then \
+			echo "ERROR: tauri_welcome is not musl-linked (interp=$$INTERP)"; \
+			exit 1; \
+		fi; \
+		echo "OK: binary is musl-linked (interp=$$INTERP)"' || exit $$?; \
+	$$SUDO mkdir -p "$$(dirname "$(abspath $(TAURI_BIN))")"; \
+	$$SUDO cp "$(abspath $(TAURI_BUILD_ROOT))/work/tauri-welcome/src-tauri/target/release/tauri_welcome" "$(abspath $(TAURI_BIN))"
 
 # Create initramfs
 $(INITRAMFS_CPIO): $(KERNEL_IMAGE) tauri-build
@@ -121,6 +232,18 @@ $(INITRAMFS_CPIO): $(KERNEL_IMAGE) tauri-build
 	mkdir -p $(INITRAMFS_DIR)/opt/kiosk
 	cp $(TAURI_BIN) $(INITRAMFS_DIR)/opt/kiosk/tauri_welcome
 	chmod +x $(INITRAMFS_DIR)/opt/kiosk/tauri_welcome
+	@echo "Validating Tauri runtime loader in initramfs..."
+	@INTERP=$$(readelf -l $(TAURI_BIN) 2>/dev/null | sed -n 's/.*Requesting program interpreter: \(.*\)]/\1/p'); \
+	if [ -z "$$INTERP" ]; then \
+		echo "ERROR: Could not detect ELF interpreter for $(TAURI_BIN)"; \
+		exit 1; \
+	fi; \
+	if [ ! -e "$(INITRAMFS_DIR)$$INTERP" ]; then \
+		echo "ERROR: Missing runtime loader $$INTERP in initramfs"; \
+		echo "ERROR: Cached Alpine rootfs is stale for current package set."; \
+		echo "ERROR: Rebuild rootfs: sudo rm -rf $(ALPINE_DIR) $(KERNEL_IMAGE) && sudo make repack"; \
+		exit 1; \
+	fi
 	
 	# Create initramfs archive
 	@echo "Creating initramfs archive..."
@@ -188,7 +311,7 @@ disk: $(DISK_IMAGE)
 
 repack:
 	@echo "Repacking from cached Alpine rootfs..."
-	rm -f $(INITRAMFS_CPIO) $(UKI_IMAGE) $(DISK_IMAGE)
+	rm -f $(INITRAMFS_CPIO) $(UKI_IMAGE) $(DISK_IMAGE) $(TAURI_BIN)
 	$(MAKE) disk
 
 # Run in QEMU
@@ -211,6 +334,7 @@ clean:
 	@echo "Cleaning build directory..."
 	rm -rf $(BUILD_DIR) $(DISK_IMAGE)
 	rm -f build.log
+	rm -rf $(TAURI_BUILD_ROOT)
 	@echo "Cleaning Tauri build artifacts..."
 	rm -rf $(TAURI_APP_DIR)/dist
 	rm -rf $(TAURI_APP_DIR)/src-tauri/target
