@@ -43,9 +43,11 @@ ROOTFS_PACKAGES := \
 	openssh openssh-server-common openssh-sftp-server \
 	dbus \
 	gtk+3.0 webkit2gtk-4.1 \
-	wayland libxkbcommon \
+	wayland libxkbcommon xkeyboard-config \
 	mesa-egl mesa-gl mesa-dri-gallium libdrm \
-	seatd cage \
+	eudev \
+	seatd cage xwayland \
+	adwaita-icon-theme \
 	ttf-dejavu
 
 all: disk
@@ -205,6 +207,7 @@ $(INITRAMFS_CPIO): $(KERNEL_IMAGE) tauri-build
 		--exclude='lib/firmware' --exclude='lib/firmware/*' \
 		bin sbin lib lib64 usr etc 2>/dev/null | tar xf - -C ../../$(INITRAMFS_DIR)/
 	@test -f $(INITRAMFS_DIR)/etc/shadow || (echo "ERROR: $(INITRAMFS_DIR)/etc/shadow is missing (root auth will fail). Rebuild with proper sudo access." && exit 1)
+	@test -d $(INITRAMFS_DIR)/usr/share/icons/Adwaita/cursors || (echo "ERROR: Missing Adwaita cursor theme in initramfs (stale Alpine rootfs cache)." && echo "ERROR: Run: sudo rm -rf $(ALPINE_DIR) $(KERNEL_IMAGE) && sudo make repack" && exit 1)
 	
 	# Create directory structure
 	mkdir -p $(INITRAMFS_DIR)/dev
@@ -325,7 +328,9 @@ run: $(DISK_IMAGE)
 		-drive file=bootable-usb.img,format=raw \
 		-bios /usr/share/ovmf/OVMF.fd \
 		-vga std \
-		-display gtk \
+		-display sdl,gl=off \
+		-device virtio-keyboard-pci \
+		-device virtio-mouse-pci \
 		-serial stdio \
 		-netdev user,id=net0,hostfwd=tcp::2222-:22 \
 		-device e1000,netdev=net0

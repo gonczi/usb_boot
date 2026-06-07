@@ -10,3 +10,4 @@ tauri-welcome/src-tauri/target/
 tauri-welcome/core
 tauri-welcome/core.*
 tauri-welcome/npm-debug.log*
+TODO.txt

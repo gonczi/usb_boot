@@ -24,12 +24,26 @@ fi
 # Load network driver early so DHCP can succeed
 modprobe e1000 2>/dev/null || echo "e1000 load failed"
 
+# Load input stack so wlroots/cage can receive pointer and keyboard events in VM.
+for module in serio_raw atkbd psmouse evdev mousedev hid usbhid virtio_input; do
+    modprobe "$module" 2>/dev/null || true
+done
+
 # Load only minimal generic graphics modules for Wayland/WebKitGTK runtime.
 # Avoid loading all vendor drivers at once (i915/amdgpu/nouveau), which can bloat
 # initramfs boot and create noisy/conflicting probe attempts in VMs.
 for module in drm drm_kms_helper simpledrm virtio_gpu; do
     modprobe "$module" 2>/dev/null || true
 done
+
+# Start eudev for proper udev device metadata (libinput requires this)
+if [ -x /sbin/udevd ]; then
+    echo "Starting eudev..."
+    /sbin/udevd --daemon
+    sleep 1
+    /sbin/udevadm trigger --action=add
+    /sbin/udevadm settle --timeout=10
+fi
 
 sleep 2
 
@@ -135,9 +149,31 @@ chmod 700 "$XDG_RUNTIME_DIR"
 seatd -g root &
 sleep 1
 
-# Launch cage with the Tauri kiosk app on TTY1
-# WLR_RENDERER_ALLOW_SOFTWARE: needed in VMs without hardware GPU
-# WLR_LIBINPUT_NO_DEVICES: suppress error when no physical input devices present
-openvt -c 1 -s -w -- env WLR_RENDERER_ALLOW_SOFTWARE=1 WLR_LIBINPUT_NO_DEVICES=1 cage /opt/kiosk/tauri_welcome &
+if [ ! -x /usr/bin/Xwayland ]; then
+    echo "WARNING: /usr/bin/Xwayland is missing; cage may fail to start" >> /run/kiosk.log
+fi
+
+# Launch cage with the Tauri kiosk app on TTY1.
+# openvt may not preserve env reliably, so export vars in a child script.
+cat > /run/start-kiosk.sh <<'EOF'
+#!/bin/sh
+export XDG_RUNTIME_DIR=/run/user/0
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+export WLR_NO_HARDWARE_CURSORS=1
+export GDK_BACKEND=wayland
+export WEBKIT_DISABLE_COMPOSITING_MODE=0
+export XCURSOR_THEME=Adwaita
+export XCURSOR_SIZE=24
+export XKB_DEFAULT_RULES=evdev
+export XKB_DEFAULT_MODEL=pc105
+export XKB_DEFAULT_LAYOUT=us
+
+# Launch cage (udevadm settle already ensured devices are ready)
+exec cage /opt/kiosk/tauri_welcome >>/run/kiosk.log 2>&1
+EOF
+chmod +x /run/start-kiosk.sh
+
+
+openvt -c 1 -s -w -- /run/start-kiosk.sh &
 
 exec sleep infinity
