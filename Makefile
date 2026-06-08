@@ -1,4 +1,4 @@
-.PHONY: all clean clean-all download-alpine initramfs uki disk repack run tauri-build tauri-build-env
+.PHONY: all clean clean-all download-alpine initramfs uki disk vmdk repack run tauri-build tauri-build-env
 
 # Configuration
 ALPINE_VERSION := 3.21
@@ -20,6 +20,7 @@ ALPINE_INITRAMFS := $(BUILD_DIR)/initramfs-alpine
 INITRAMFS_CPIO := $(BUILD_DIR)/initramfs.cpio.gz
 UKI_IMAGE := $(BUILD_DIR)/linux.efi
 DISK_IMAGE := bootable-usb.img
+VMDK_IMAGE := bootable-usb.vmdk
 DISK_MIN_SIZE_MB := 256
 DISK_PADDING_MB := 128
 
@@ -312,6 +313,14 @@ $(DISK_IMAGE): $(UKI_IMAGE)
 
 disk: $(DISK_IMAGE)
 
+# Create VMware-compatible VMDK image from raw disk image
+$(VMDK_IMAGE): $(DISK_IMAGE)
+	@echo "Creating VMware-compatible VMDK image..."
+	@command -v qemu-img >/dev/null 2>&1 || (echo "ERROR: qemu-img is required (install qemu-utils)." && exit 1)
+	qemu-img convert -f raw -O vmdk $(DISK_IMAGE) $(VMDK_IMAGE)
+
+vmdk: $(VMDK_IMAGE)
+
 repack:
 	@echo "Repacking from cached Alpine rootfs..."
 	rm -f $(INITRAMFS_CPIO) $(UKI_IMAGE) $(DISK_IMAGE) $(TAURI_BIN)
@@ -352,6 +361,7 @@ help:
 	@echo "  initramfs       - Create initramfs"
 	@echo "  uki             - Create Unified Kernel Image"
 	@echo "  disk            - Create bootable disk image"
+	@echo "  vmdk            - Create VMware-compatible VMDK from bootable-usb.img"
 	@echo "  repack          - Rebuild disk image from cached Alpine rootfs"
 	@echo "  run             - Run in QEMU (window + console logs)"
 	@echo "  clean           - Remove build artifacts"
