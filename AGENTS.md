@@ -10,6 +10,7 @@ Project-level agent notes for usb_boot.
 - Primary targets: `make download-alpine`, `make initramfs`, `make uki`, `make disk`, `make run`.
 - Fast rebuild from cached rootfs: `make repack`.
 - Typical full local test: `sudo make run`.
+- Most build paths are expected to run with sudo because cached trees can become root-owned.
 
 ## Rootfs Package Policy
 - Alpine branch is v3.21.
@@ -32,10 +33,12 @@ Project-level agent notes for usb_boot.
   - `/run` - required for XDG_RUNTIME_DIR and sockets
   - `/tmp` - general temporary files
   - Without these, wlroots will fail with "Failed to allocate shm file" errors
+- Runtime launch path is Wayland kiosk via `seatd` + `cage` + `/opt/kiosk/tauri_welcome`.
 
 ## Known Build Pitfalls
 - `build/alpine` may be root-owned after privileged builds.
 - Cleanup of `build/alpine` must handle privileged ownership, otherwise rebuild can fail with permission denied.
+- Runtime package set changes can invalidate cached rootfs content (e.g. missing loader/theme assets). If so, remove `build/alpine` and `build/vmlinuz-lts` before rebuild.
 
 ## SSH/Boot Notes
 - Root password auth is intentionally enabled for this kiosk/test image.
@@ -60,6 +63,10 @@ Project-level agent notes for usb_boot.
 - **Reference docs**:
   - Cage config: https://github.com/cage-kiosk/cage/wiki/Configuration
   - Wlroots env vars: https://github.com/swaywm/wlroots/blob/master/docs/env_vars.md
+
+## Documentation Sync Notes
+- Keep `README.md` aligned with current runtime behavior: Wayland/cage/Tauri (not framebuffer/fbi flow).
+- `kiosk-image.png` is still a required build input because it is copied into initramfs, even though the active kiosk UI is the Tauri app.
 
 ## Updating This File
 - Keep entries short and actionable.

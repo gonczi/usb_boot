@@ -1,6 +1,7 @@
 build/
 apk/
 bootable-usb.img
+bootable-usb.vmdk
 usb_boot.code-workspace
 
 # Tauri welcome app generated artifacts

@@ -1,15 +1,16 @@
-# USB Boot - Alpine Linux Kiosk
+# USB Boot - Alpine Linux Tauri Kiosk
 
-Builds a bootable UEFI USB drive image from Alpine Linux that boots into a framebuffer kiosk mode displaying an image. The entire OS, kernel, and initramfs are packaged into a single Unified Kernel Image (UKI) — no bootloader configuration needed.
+Builds a bootable UEFI USB drive image from Alpine Linux that boots directly into a minimal Wayland kiosk session and launches a Tauri application. The entire OS, kernel, and initramfs are packaged into a single Unified Kernel Image (UKI), so no separate bootloader config is required.
 
 ## How It Works
 
-1. **Downloads** Alpine Linux minirootfs and packages (kernel, OpenSSH, fbi, graphics libs) from the official mirror
-2. **Assembles** a custom initramfs with the rootfs, kernel modules, and an init script
+1. **Downloads** Alpine Linux rootfs and runtime packages (kernel, OpenSSH, Wayland/WebKitGTK stack) from the official mirror
+2. **Builds** the Tauri app natively inside an Alpine chroot to produce a musl-linked binary
+3. **Assembles** a custom initramfs with the rootfs, kernel modules, and an init script
 3. **Creates a UKI** (`linux.efi`) containing the kernel + initramfs + boot cmdline via `ukify`
 4. **Builds a GPT disk image** with an EFI System Partition containing the UKI as `BOOTX64.EFI`
 
-At boot the init script sets up networking (DHCP), starts an SSH server (root/alpine), loads framebuffer drivers, and displays a kiosk image via `/dev/fb0`.
+At boot the init script sets up networking (DHCP), starts SSH (root/alpine), initializes eudev + seatd, starts `cage` on TTY1, then launches `/opt/kiosk/tauri_welcome`.
 
 ## Prerequisites
 
@@ -48,13 +49,13 @@ Place the image to display at the root of the project:
 cp your-image.png kiosk-image.png
 ```
 
-This file must exist before running `make`. Supported formats: PNG, JPEG, BMP (anything `fbi` can display).
+This file must exist before running `make`, because it is currently copied into the initramfs as part of the build pipeline. The active kiosk UI is the Tauri app, not framebuffer image rendering.
 
 ## Usage
 
 ```sh
-make              # build everything (downloads ~100MB on first run)
-make run          # test in QEMU (GTK window + serial on stdio)
+sudo make         # build everything (downloads packages on first run)
+sudo make run     # test in QEMU (SDL window + serial on stdio)
 ```
 
 SSH into the running VM:
@@ -118,8 +119,8 @@ sudo make tauri-build
 
 ## Project Structure
 
-- `init` — Boot init script (mounts filesystems, networking, SSH, kiosk display)
-- `kiosk-image.png` — Image displayed on the framebuffer (**required**, not tracked in git)
+- `init` — Boot init script (mounts filesystems, networking, SSH, eudev/seatd, cage, Tauri launch)
+- `kiosk-image.png` — Build input copied into initramfs (**required**, not tracked in git)
 - `Makefile` — Full build pipeline
 - `build/` — Build outputs (rootfs, initramfs, kernel, UKI)
 - `build/tools/alpine-make-rootfs` — Downloaded helper script for building the Alpine rootfs
@@ -129,6 +130,23 @@ sudo make tauri-build
 ### Rootfs packages
 
 Edit `ROOTFS_PACKAGES` in the `Makefile` to add or remove Alpine packages from the rootfs.
+
+If you change runtime package sets in a way that affects shared libraries or cursor/theme assets, rebuild the cached rootfs to avoid stale cache issues:
+
+```sh
+sudo rm -rf build/alpine build/vmlinuz-lts
+sudo make repack
+```
+
+### Init behavior
+
+Edit `init` to customize boot-time behavior (network, SSH policy, module loading, compositor launch, app command).
+
+Current policy is intentionally VM-oriented and minimal:
+
+- Generic graphics modules: `drm`, `drm_kms_helper`, `simpledrm`, `virtio_gpu`
+- Input modules for QEMU/virtio devices
+- Root password SSH login enabled for testing
 
 ### Rootfs post-install script (`alpine-make-rootfs --script-chroot`)
 
