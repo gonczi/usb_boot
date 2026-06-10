@@ -48,7 +48,11 @@ ROOTFS_PACKAGES := \
 	eudev \
 	seatd cage xwayland \
 	adwaita-icon-theme \
-	ttf-dejavu
+	ttf-dejavu \
+	curl wget file \
+	openssl \
+	libayatana-appindicator \
+	librsvg
 
 all: disk
 

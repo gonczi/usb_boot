@@ -8,6 +8,12 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 /bin/busybox mountpoint -q /dev  2>/dev/null || /bin/busybox mount -t devtmpfs none /dev
 [ -d /dev/pts ] || mkdir -p /dev/pts
 /bin/busybox mountpoint -q /dev/pts 2>/dev/null || /bin/busybox mount -t devpts devpts /dev/pts
+[ -d /dev/shm ] || mkdir -p /dev/shm
+/bin/busybox mountpoint -q /dev/shm 2>/dev/null || /bin/busybox mount -t tmpfs -o mode=1777,size=64m tmpfs /dev/shm
+[ -d /run ] || mkdir -p /run
+/bin/busybox mountpoint -q /run 2>/dev/null || /bin/busybox mount -t tmpfs -o mode=0755,size=64m tmpfs /run
+[ -d /tmp ] || mkdir -p /tmp
+/bin/busybox mountpoint -q /tmp 2>/dev/null || /bin/busybox mount -t tmpfs -o mode=1777,size=128m tmpfs /tmp
 
 # Set root password to 'alpine'
 if command -v chpasswd >/dev/null 2>&1; then
@@ -158,21 +164,32 @@ fi
 cat > /run/start-kiosk.sh <<'EOF'
 #!/bin/sh
 export XDG_RUNTIME_DIR=/run/user/0
+export LIBSEAT_BACKEND=seatd
 export WLR_RENDERER_ALLOW_SOFTWARE=1
 export WLR_NO_HARDWARE_CURSORS=1
 export GDK_BACKEND=wayland
 export WEBKIT_DISABLE_COMPOSITING_MODE=0
 export XCURSOR_THEME=Adwaita
 export XCURSOR_SIZE=24
+
+# Set locale to prevent potential libxkbcommon issues
+export LC_ALL=C
+export LANG=C
+
+# Complete XKB configuration - explicitly set all variables
 export XKB_DEFAULT_RULES=evdev
 export XKB_DEFAULT_MODEL=pc105
 export XKB_DEFAULT_LAYOUT=us
+export XKB_DEFAULT_VARIANT=""
+export XKB_DEFAULT_OPTIONS=""
 
-# Launch cage (udevadm settle already ensured devices are ready)
-exec cage /opt/kiosk/tauri_welcome >>/run/kiosk.log 2>&1
+# Debug logging for libinput
+export LIBINPUT_LOG_PRIORITY=debug
+
+# Launch cage with debug output (udevadm settle already ensured devices are ready)
+exec cage -d /opt/kiosk/tauri_welcome >>/run/kiosk.log 2>&1
 EOF
 chmod +x /run/start-kiosk.sh
-
 
 openvt -c 1 -s -w -- /run/start-kiosk.sh &
 
