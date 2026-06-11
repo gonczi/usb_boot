@@ -268,7 +268,7 @@ $(UKI_IMAGE): $(KERNEL_IMAGE) $(INITRAMFS_CPIO)
 	$(UKIFY) build \
 		--linux=$(KERNEL_IMAGE) \
 		--initrd=$(INITRAMFS_CPIO) \
-		--cmdline="console=tty0 console=ttyS0 earlyprintk=serial,ttyS0,115200 loglevel=7 debug" \
+		--cmdline="console=tty0 console=ttyS0 earlyprintk=serial,ttyS0,115200 loglevel=7 debug net.ifnames=0 biosdevname=0" \
 		--output=$(UKI_IMAGE)
 	@echo "UKI created: $(UKI_IMAGE)"
 

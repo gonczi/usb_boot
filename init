@@ -6,14 +6,61 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 /bin/busybox mountpoint -q /proc 2>/dev/null || /bin/busybox mount -t proc none /proc
 /bin/busybox mountpoint -q /sys  2>/dev/null || /bin/busybox mount -t sysfs none /sys
 /bin/busybox mountpoint -q /dev  2>/dev/null || /bin/busybox mount -t devtmpfs none /dev
-[ -d /dev/pts ] || mkdir -p /dev/pts
-/bin/busybox mountpoint -q /dev/pts 2>/dev/null || /bin/busybox mount -t devpts devpts /dev/pts
-[ -d /dev/shm ] || mkdir -p /dev/shm
-/bin/busybox mountpoint -q /dev/shm 2>/dev/null || /bin/busybox mount -t tmpfs -o mode=1777,size=64m tmpfs /dev/shm
+
 [ -d /run ] || mkdir -p /run
 /bin/busybox mountpoint -q /run 2>/dev/null || /bin/busybox mount -t tmpfs -o mode=0755,size=64m tmpfs /run
+
+# Load input stack so wlroots/cage can receive pointer and keyboard events in VM.
+for module in serio_raw atkbd psmouse evdev mousedev hid usbhid virtio_input; do
+    modprobe "$module" 2>/dev/null || true
+done
+
+# Load only minimal generic graphics modules for Wayland/WebKitGTK runtime.
+for module in drm drm_kms_helper simpledrm virtio_gpu; do
+    modprobe "$module" 2>/dev/null || true
+done
+
+# Load network driver early (opcionális, mert az udev is betöltené, de ártani nem használ)
+modprobe e1000 2>/dev/null || echo "e1000 load failed"
+
+if [ -x /sbin/udevd ]; then
+    /sbin/udevd --daemon
+    
+    /sbin/udevadm trigger --action=add --type=subsystems
+    /sbin/udevadm trigger --action=add --type=devices
+    
+    /sbin/udevadm settle --timeout=30
+fi
+
+[ -d /dev/pts ] || mkdir -p /dev/pts
+/bin/busybox mountpoint -q /dev/pts 2>/dev/null || /bin/busybox mount -t devpts devpts /dev/pts
+
+[ -d /dev/shm ] || mkdir -p /dev/shm
+/bin/busybox mountpoint -q /dev/shm 2>/dev/null || /bin/busybox mount -t tmpfs -o mode=1777,size=64m tmpfs /dev/shm
+
 [ -d /tmp ] || mkdir -p /tmp
 /bin/busybox mountpoint -q /tmp 2>/dev/null || /bin/busybox mount -t tmpfs -o mode=1777,size=128m tmpfs /tmp
+
+# cgroups v2
+[ -d /sys/fs/cgroup ] || mkdir -p /sys/fs/cgroup
+/bin/busybox mountpoint -q /sys/fs/cgroup 2>/dev/null || /bin/busybox mount -t cgroup2 none /sys/fs/cgroup
+
+/sbin/ip link set lo up
+
+if [ -d /sys/class/net/eth0 ]; then
+    /sbin/ip link set eth0 up
+    
+    echo "Starting DHCP on eth0..."
+    timeout 10 /sbin/udhcpc -i eth0 -s /usr/share/udhcpc/default.script >/dev/null 2>&1
+    
+    if [ $? -ne 0 ]; then
+        echo "DHCP failed, setting fallback static IP on eth0..."
+        /sbin/ip addr add 10.0.2.15/24 dev eth0
+        /sbin/ip route add default via 10.0.2.2 dev eth0 2>/dev/null || true
+    fi
+else
+    echo "No eth0 interface found!"
+fi
 
 # Set root password to 'alpine'
 if command -v chpasswd >/dev/null 2>&1; then
@@ -25,54 +72,6 @@ if command -v chpasswd >/dev/null 2>&1; then
     fi
 else
     echo "WARNING: chpasswd not found"
-fi
-
-# Load network driver early so DHCP can succeed
-modprobe e1000 2>/dev/null || echo "e1000 load failed"
-
-# Load input stack so wlroots/cage can receive pointer and keyboard events in VM.
-for module in serio_raw atkbd psmouse evdev mousedev hid usbhid virtio_input; do
-    modprobe "$module" 2>/dev/null || true
-done
-
-# Load only minimal generic graphics modules for Wayland/WebKitGTK runtime.
-# Avoid loading all vendor drivers at once (i915/amdgpu/nouveau), which can bloat
-# initramfs boot and create noisy/conflicting probe attempts in VMs.
-for module in drm drm_kms_helper simpledrm virtio_gpu; do
-    modprobe "$module" 2>/dev/null || true
-done
-
-# Start eudev for proper udev device metadata (libinput requires this)
-if [ -x /sbin/udevd ]; then
-    echo "Starting eudev..."
-    /sbin/udevd --daemon
-    sleep 1
-    /sbin/udevadm trigger --action=add
-    /sbin/udevadm settle --timeout=10
-fi
-
-sleep 2
-
-# Setup network
-ip link set lo up
-
-# Wait for eth0 to appear and configure it
-ETH_FOUND=0
-for i in 1 2 3 4 5; do
-    if ip link show eth0 2>/dev/null; then
-        ip link set eth0 up
-        ETH_FOUND=1
-        break
-    fi
-    sleep 1
-done
-
-if [ $ETH_FOUND -eq 1 ]; then
-    # Get IP address via DHCP with timeout
-    timeout 10 udhcpc -i eth0 -s /usr/share/udhcpc/default.script >/dev/null 2>&1
-else
-    # Set static IP if DHCP fails
-    ip addr add 10.0.2.15/24 dev lo
 fi
 
 # Regenerate library symlinks BEFORE starting SSH
@@ -141,10 +140,7 @@ else
     find / -name "*ssh*" -type f 2>/dev/null | head -20
 fi
 
-# Scan sysfs and populate /dev (needed when kernel auto-mounted devtmpfs before init)
-/bin/busybox mdev -s 2>/dev/null || true
-
-echo "kiosk-tauri elindult"
+echo "kiosk-tauri started"
 
 # Start kiosk app on TTY1 via cage Wayland compositor
 export XDG_RUNTIME_DIR=/run/user/0
