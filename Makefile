@@ -47,13 +47,11 @@ ROOTFS_PACKAGES := \
 	wayland libxkbcommon xkeyboard-config \
 	mesa-egl mesa-gl mesa-dri-gallium libdrm \
 	eudev \
-	seatd cage xwayland \
+	seatd cage \
 	adwaita-icon-theme \
 	ttf-dejavu \
-	curl wget file \
-	openssl \
-	libayatana-appindicator \
-	librsvg
+	curl \
+	openssl
 
 all: disk
 
