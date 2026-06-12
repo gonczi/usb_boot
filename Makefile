@@ -224,10 +224,6 @@ $(INITRAMFS_CPIO): $(KERNEL_IMAGE) tauri-build
 	# Note: Device nodes are not created here; devtmpfs will handle them at boot
 	# The init script mounts devtmpfs which automatically creates device nodes
 	
-	# Copy kiosk image
-	@echo "Copying kiosk image..."
-	cp kiosk-image.png $(INITRAMFS_DIR)/root/kiosk-image.png
-	
 	# Copy init script
 	@echo "Copying init script..."
 	cp init $(INITRAMFS_DIR)/init

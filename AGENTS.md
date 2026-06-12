@@ -66,7 +66,7 @@ Project-level agent notes for usb_boot.
 
 ## Documentation Sync Notes
 - Keep `README.md` aligned with current runtime behavior: Wayland/cage/Tauri (not framebuffer/fbi flow).
-- `kiosk-image.png` is still a required build input because it is copied into initramfs, even though the active kiosk UI is the Tauri app.
+- `tauri-welcome/src/kiosk-image.png` is the background image for the Tauri app and is also copied into initramfs during build.
 
 ## Updating This File
 - Keep entries short and actionable.

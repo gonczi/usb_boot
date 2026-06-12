@@ -43,13 +43,13 @@ KVM support (`/dev/kvm`) is recommended for usable VM performance.
 
 ### Kiosk image
 
-Place the image to display at the root of the project:
+Place the image to use as background at `tauri-welcome/src/kiosk-image.png`:
 
 ```sh
-cp your-image.png kiosk-image.png
+cp your-image.png tauri-welcome/src/kiosk-image.png
 ```
 
-This file must exist before running `make`, because it is currently copied into the initramfs as part of the build pipeline. The active kiosk UI is the Tauri app, not framebuffer image rendering.
+This file is used as the background image of the Tauri app and is copied into the initramfs as part of the build pipeline.
 
 ## Usage
 
@@ -120,7 +120,7 @@ sudo make tauri-build
 ## Project Structure
 
 - `init` — Boot init script (mounts filesystems, networking, SSH, eudev/seatd, cage, Tauri launch)
-- `kiosk-image.png` — Build input copied into initramfs (**required**, not tracked in git)
+- `tauri-welcome/src/kiosk-image.png` — Background image for Tauri app, copied into initramfs (**required**, not tracked in git)
 - `Makefile` — Full build pipeline
 - `build/` — Build outputs (rootfs, initramfs, kernel, UKI)
 - `build/tools/alpine-make-rootfs` — Downloaded helper script for building the Alpine rootfs

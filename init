@@ -167,6 +167,7 @@ export GDK_BACKEND=wayland
 export WEBKIT_DISABLE_COMPOSITING_MODE=0
 export XCURSOR_THEME=Adwaita
 export XCURSOR_SIZE=24
+export GTK_CSD=0
 
 export LC_ALL=C
 export LANG=C
