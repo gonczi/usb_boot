@@ -39,6 +39,9 @@ TAURI_BUILD_DEPS := \
 
 # Packages installed into the rootfs; dependencies are resolved automatically by apk.
 # Kept intentionally minimal, but includes a Tauri-capable Wayland/WebKitGTK runtime.
+# NOTE: WebKitGTK requires OpenGL/EGL (Mesa). Mesa/Gallium requires LLVM for shader compilation.
+# This stack (WebKit+Mesa+LLVM) accounts for ~400 MB of the initramfs and cannot be removed
+# without breaking the webview functionality.
 ROOTFS_PACKAGES := \
 	linux-lts \
 	openssh openssh-server-common openssh-sftp-server \
@@ -302,6 +305,14 @@ $(DISK_IMAGE): $(UKI_IMAGE)
 	@echo "=========================================="
 	@echo "Bootable disk image created: $(DISK_IMAGE)"
 	@echo "=========================================="
+	@echo ""
+	@echo "Image components and sizes:"
+	@echo "  Kernel:    $$(ls -lh $(KERNEL_IMAGE) | awk '{print $$5}') ($(KERNEL_IMAGE))"
+	@echo "  Initramfs: $$(ls -lh $(INITRAMFS_CPIO) | awk '{print $$5}') ($(INITRAMFS_CPIO))"
+	@echo "  UKI:       $$(ls -lh $(UKI_IMAGE) | awk '{print $$5}') ($(UKI_IMAGE))"
+	@echo "  Tauri app: $$(ls -lh $(TAURI_BIN) | awk '{print $$5}') ($(TAURI_BIN))"
+	@echo "  Disk img:  $$(ls -lh $(DISK_IMAGE) | awk '{print $$5}') ($(DISK_IMAGE))"
+	@echo ""
 	@echo "To write to USB drive:"
 	@echo "  sudo dd if=$(DISK_IMAGE) of=/dev/sdX bs=4M status=progress && sync"
 	@echo "  (Replace /dev/sdX with your USB drive)"
