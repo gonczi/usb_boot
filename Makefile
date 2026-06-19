@@ -199,7 +199,7 @@ $(TAURI_BIN): $(TAURI_BUILD_DEPS_STAMP)
 	$$SUDO cp "$(abspath $(TAURI_BUILD_ROOT))/work/tauri-welcome/src-tauri/target/release/tauri_welcome" "$(abspath $(TAURI_BIN))"
 
 # Create initramfs
-$(INITRAMFS_CPIO): $(KERNEL_IMAGE) tauri-build
+$(INITRAMFS_CPIO): $(KERNEL_IMAGE) tauri-build init
 	@echo "Creating initramfs from Alpine Linux..."
 	rm -rf $(INITRAMFS_DIR)
 	mkdir -p $(INITRAMFS_DIR)
@@ -231,6 +231,17 @@ $(INITRAMFS_CPIO): $(KERNEL_IMAGE) tauri-build
 	@echo "Copying init script..."
 	cp init $(INITRAMFS_DIR)/init
 	chmod +x $(INITRAMFS_DIR)/init
+
+	# Pre-generate SSH host keys at build time to avoid ~10-30s keygen delay at boot
+	@echo "Pre-generating SSH host keys..."
+	mkdir -p $(INITRAMFS_DIR)/etc/ssh
+	@for keytype in rsa ecdsa ed25519; do \
+		keyfile="$(INITRAMFS_DIR)/etc/ssh/ssh_host_$${keytype}_key"; \
+		if [ ! -f "$$keyfile" ]; then \
+			ssh-keygen -q -t $$keytype -N "" -f "$$keyfile" >/dev/null 2>&1; \
+		fi; \
+	done
+	@echo "SSH host keys pre-generated."
 
 	# Copy Tauri app binary
 	@echo "Copying Tauri app binary..."
@@ -305,6 +316,7 @@ $(DISK_IMAGE): $(UKI_IMAGE)
 	@echo "=========================================="
 	@echo "Bootable disk image created: $(DISK_IMAGE)"
 	@echo "=========================================="
+	chmod a+r $(DISK_IMAGE) $(UKI_IMAGE) $(INITRAMFS_CPIO) $(KERNEL_IMAGE)
 	@echo ""
 	@echo "Image components and sizes:"
 	@echo "  Kernel:    $$(ls -lh $(KERNEL_IMAGE) | awk '{print $$5}') ($(KERNEL_IMAGE))"

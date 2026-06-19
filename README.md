@@ -12,6 +12,39 @@ Builds a bootable UEFI USB drive image from Alpine Linux that boots directly int
 
 At boot the init script sets up networking (DHCP), starts SSH (root/alpine), initializes eudev + seatd, starts `cage` on TTY1, then launches `/opt/kiosk/tauri_welcome`.
 
+### Boot sequence
+
+```text
+kernel/initramfs    init              udevd            bg services        seatd/openvt        cage/app
+      |             |                  |                  |                  |                  |
+      |-----------> |                  |                  |                  |                  |
+      |             | mount proc/sys/dev/run/tmpfs        |                  |                  |
+      |             | modprobe input + drm + e1000        |                  |                  |
+      |             |---- start daemon ------------------->|                  |                  |
+      |             |---- trigger devices ---------------->|                  |                  |
+      |             |---- wait: udevadm settle ----------->|                  |                  |
+      |             |<--- all devices settled ------------|                  |                  |
+      |             | mount devpts/shm/tmp/cgroup2        |                  |                  |
+      |             | run ldconfig / symlink fixups       |                  |                  |
+      |             |---- fork bg subshell ------------------------------------>|                  |
+      |             |                  |                  | DHCP (wait)        |                  |
+      |             |                  |                  | chpasswd           |                  |
+      |             |                  |                  | start sshd         |                  |
+      |             |---- start seatd ----------------------------------------->|                  |
+      |             |---- wait: /run/seatd.sock                                |                  |
+      |             |---- write /run/start-kiosk.sh                            |                  |
+      |             |---- openvt tty1 ----------------------------------------->|                  |
+      |             |                                                          |---- exec ------->|
+      |             |                                                          |                  | cage -d -- tauri_welcome
+      |             |<---------------- bg subshell continues in parallel -------|                  |
+```
+
+Legend:
+
+- `wait:` marks a blocking readiness point in the foreground init path.
+- `fork bg subshell` is the main parallelization point: DHCP, password setup, and `sshd` continue in the background.
+- `openvt tty1` means the kiosk compositor and the Tauri app are launched on virtual terminal 1, not directly in the init shell.
+
 ## Prerequisites
 
 ### System packages

@@ -2,6 +2,12 @@
 
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# Boot timing log: readable via 'cat /run/boot-timing.log' after boot
+TLOG=/run/boot-timing.log
+_ts() { [ -r /proc/uptime ] && echo "$(cut -d' ' -f1 /proc/uptime) $*" >> "$TLOG" 2>/dev/null || true; }
+
+_ts "init: START"
+
 # Mount essential filesystems
 /bin/busybox mountpoint -q /proc 2>/dev/null || /bin/busybox mount -t proc none /proc
 /bin/busybox mountpoint -q /sys  2>/dev/null || /bin/busybox mount -t sysfs none /sys
@@ -10,27 +16,36 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 [ -d /run ] || mkdir -p /run
 /bin/busybox mountpoint -q /run 2>/dev/null || /bin/busybox mount -t tmpfs -o mode=0755,size=64m tmpfs /run
 
+_ts "mounts: done"
+
 # Load input stack so wlroots/cage can receive pointer and keyboard events in VM.
 for module in serio_raw atkbd psmouse evdev mousedev hid usbhid virtio_input; do
     modprobe "$module" 2>/dev/null || true
 done
+
+_ts "modprobe input: done"
 
 # Load only minimal generic graphics modules for Wayland/WebKitGTK runtime.
 for module in drm drm_kms_helper simpledrm virtio_gpu; do
     modprobe "$module" 2>/dev/null || true
 done
 
+_ts "modprobe drm: done"
+
 # Load network driver early (opcionális, mert az udev is betöltené, de ártani nem használ)
 modprobe e1000 2>/dev/null || echo "e1000 load failed"
 
+_ts "udevd: START"
 if [ -x /sbin/udevd ]; then
     /sbin/udevd --daemon
     
     /sbin/udevadm trigger --action=add --type=subsystems
     /sbin/udevadm trigger --action=add --type=devices
     
-    /sbin/udevadm settle --timeout=30
+    /sbin/udevadm settle --timeout=10
 fi
+
+_ts "udevd settle: done"
 
 [ -d /dev/pts ] || mkdir -p /dev/pts
 /bin/busybox mountpoint -q /dev/pts 2>/dev/null || /bin/busybox mount -t devpts devpts /dev/pts
@@ -47,34 +62,7 @@ fi
 
 /sbin/ip link set lo up
 
-if [ -d /sys/class/net/eth0 ]; then
-    /sbin/ip link set eth0 up
-    
-    echo "Starting DHCP on eth0..."
-    timeout 10 /sbin/udhcpc -i eth0 -s /usr/share/udhcpc/default.script >/dev/null 2>&1
-    
-    if [ $? -ne 0 ]; then
-        echo "DHCP failed, setting fallback static IP on eth0..."
-        /sbin/ip addr add 10.0.2.15/24 dev eth0
-        /sbin/ip route add default via 10.0.2.2 dev eth0 2>/dev/null || true
-    fi
-else
-    echo "No eth0 interface found!"
-fi
-
-# Set root password to 'alpine'
-if command -v chpasswd >/dev/null 2>&1; then
-    if echo "root:alpine" | chpasswd; then
-        echo "Root password configured."
-    else
-        echo "WARNING: Failed to set root password via chpasswd"
-        [ -f /etc/shadow ] || echo "WARNING: /etc/shadow missing"
-    fi
-else
-    echo "WARNING: chpasswd not found"
-fi
-
-# Regenerate library symlinks BEFORE starting SSH
+# Regenerate library symlinks BEFORE starting kiosk
 if ! ldconfig 2>/dev/null; then
     # Create symlinks for shared libraries
     for dir in /lib /usr/lib; do
@@ -93,52 +81,70 @@ if ! ldconfig 2>/dev/null; then
     cd /
 fi
 
-# Start SSH server
-mkdir -p /var/empty /var/run /run
-mkdir -p /etc/ssh
-mkdir -p /etc/ssh/sshd_config.d
-mkdir -p /root/.ssh
-chmod 700 /root/.ssh
+_ts "ldconfig: done"
 
-# Allow password SSH login for root in this kiosk image.
-cat > /etc/ssh/sshd_config.d/10-root-password.conf <<'EOF'
+# SSH and networking are NOT required for the kiosk to start.
+# Run them in a background subshell so the kiosk launches immediately after udev.
+(
+    _ts "bg-services: START"
+
+    _ts "network: START"
+    if [ -d /sys/class/net/eth0 ]; then
+        /sbin/ip link set eth0 up
+        echo "Starting DHCP on eth0..."
+        timeout 10 /sbin/udhcpc -i eth0 -s /usr/share/udhcpc/default.script >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            echo "DHCP failed, setting fallback static IP on eth0..."
+            /sbin/ip addr add 10.0.2.15/24 dev eth0
+            /sbin/ip route add default via 10.0.2.2 dev eth0 2>/dev/null || true
+        fi
+    else
+        echo "No eth0 interface found!"
+    fi
+    _ts "network: done"
+
+    # Set root password to 'alpine'
+    if command -v chpasswd >/dev/null 2>&1; then
+        if echo "root:alpine" | chpasswd; then
+            echo "Root password configured."
+        else
+            echo "WARNING: Failed to set root password via chpasswd"
+            [ -f /etc/shadow ] || echo "WARNING: /etc/shadow missing"
+        fi
+    else
+        echo "WARNING: chpasswd not found"
+    fi
+    _ts "chpasswd: done"
+
+    # Start SSH server
+    mkdir -p /var/empty /var/run /run /etc/ssh/sshd_config.d /root/.ssh
+    chmod 700 /root/.ssh
+
+    cat > /etc/ssh/sshd_config.d/10-root-password.conf <<'SSHEOF'
 PermitRootLogin yes
 PasswordAuthentication yes
 KbdInteractiveAuthentication no
-EOF
+SSHEOF
 
-# Generate host keys if they don't exist
-if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
-    if command -v ssh-keygen >/dev/null 2>&1; then
-        ssh-keygen -A >/dev/null 2>&1
+    # Generate host keys only if not pre-generated at build time
+    if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
+        _ts "ssh-keygen: START"
+        command -v ssh-keygen >/dev/null 2>&1 && ssh-keygen -A >/dev/null 2>&1
+        _ts "ssh-keygen: done"
+    fi
+
+    # Start sshd (search only standard paths; no filesystem-wide find)
+    SSHD_PATH=""
+    for path in /usr/sbin/sshd /sbin/sshd /usr/bin/sshd /bin/sshd; do
+        if [ -x "$path" ]; then SSHD_PATH="$path"; break; fi
+    done
+    if [ -n "$SSHD_PATH" ]; then
+        "$SSHD_PATH" -D &
     else
-        echo "ssh-keygen not found, skipping key generation"
+        echo "WARNING: sshd binary not found!"
     fi
-fi
-
-# Start sshd
-SSHD_PATH=""
-
-# Try to find sshd
-for path in /usr/sbin/sshd /sbin/sshd /usr/bin/sshd /bin/sshd; do
-    if [ -x "$path" ]; then
-        SSHD_PATH="$path"
-        break
-    fi
-done
-
-# If not found in standard paths, search the filesystem
-if [ -z "$SSHD_PATH" ]; then
-    SSHD_PATH=$(find / -name "sshd" -type f -perm /u+x 2>/dev/null | head -1)
-fi
-
-if [ -n "$SSHD_PATH" ]; then
-    "$SSHD_PATH" -D &
-else
-    echo "WARNING: sshd binary not found!"
-    echo "Available SSH-related files:"
-    find / -name "*ssh*" -type f 2>/dev/null | head -20
-fi
+    _ts "sshd: started"
+) &
 
 echo "kiosk-tauri started"
 
@@ -149,7 +155,13 @@ chmod 700 "$XDG_RUNTIME_DIR"
 
 # seatd is needed for cage to access DRM without root privilege dance
 seatd -g root &
-sleep 1
+# Poll for seatd socket instead of sleeping a fixed 1s
+_wait=0
+while [ ! -S /run/seatd.sock ] && [ $_wait -lt 5 ]; do
+    /bin/busybox usleep 100000
+    _wait=$((_wait + 1))
+done
+_ts "seatd: ready"
 
 # Launch cage with the Tauri kiosk app on TTY1.
 # openvt may not preserve env reliably, so export vars in a child script.
@@ -180,10 +192,17 @@ export XKB_DEFAULT_OPTIONS=""
 
 export LIBINPUT_LOG_PRIORITY=debug
 
+# Mesa shader cache: use tmpfs-backed dir so Mesa can cache shaders within the session.
+# Without this, Mesa/LLVM recompiles shaders on every GL context creation.
+export MESA_SHADER_CACHE_DIR=/tmp/mesa-shader-cache
+mkdir -p "$MESA_SHADER_CACHE_DIR"
+
+echo "$(cat /proc/uptime | cut -d' ' -f1) cage: starting" >> /run/boot-timing.log
 exec cage -d -- /opt/kiosk/tauri_welcome >>/run/kiosk.log 2>&1
 EOF
 chmod +x /run/start-kiosk.sh
 
+_ts "cage: launched"
 openvt -c 1 -s -w -- /run/start-kiosk.sh &
 
 exec sleep infinity
