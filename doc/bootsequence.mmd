@@ -1,0 +1,32 @@
+sequenceDiagram
+    autonumber
+    participant KI as kernel/initramfs
+    participant I as init
+    participant U as udevd
+    participant B as bg services
+    participant S as seatd/openvt
+    participant C as cage/app
+
+    KI->>I: hand off to init
+    I->>I: mount proc/sys/dev/run/tmpfs
+    I->>I: modprobe input + drm + e1000
+    I->>U: start daemon
+    I->>U: trigger devices
+    I->>U: wait for udevadm settle
+    U-->>I: all devices settled
+    I->>I: mount devpts/shm/tmp/cgroup2
+    I->>I: run ldconfig / symlink fixups
+    I->>B: fork bg subshell
+    par background setup
+        B->>B: DHCP wait
+        B->>B: chpasswd
+        B->>B: start sshd
+    and kiosk bring-up
+        I->>S: start seatd
+        I->>I: wait for /run/seatd.sock
+        I->>I: write /run/start-kiosk.sh
+        I->>S: openvt tty1
+        S->>C: exec kiosk session
+        C->>C: cage -d -- tauri_welcome
+    end
+    B-->>I: continues in parallel
